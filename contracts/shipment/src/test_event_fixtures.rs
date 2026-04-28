@@ -24,8 +24,6 @@
 //! configuration is required.  A failing test means an event payload has
 //! drifted from the committed expectation.
 
-#![cfg(test)]
-
 extern crate std;
 
 use crate::{test_utils, NavinShipment, NavinShipmentClient};
@@ -85,15 +83,11 @@ fn topics_emitted(env: &Env) -> std::vec::Vec<std::string::String> {
 }
 
 /// Find the first event matching `topic` and return its data as a Val Vec.
-fn find_event_data(
-    env: &Env,
-    topic: &str,
-) -> Option<soroban_sdk::Vec<soroban_sdk::Val>> {
+fn find_event_data(env: &Env, topic: &str) -> Option<soroban_sdk::Vec<soroban_sdk::Val>> {
     for (_contract, t, data) in env.events().all().into_iter() {
         if let Some(sym) = t.get(0).and_then(|v| Symbol::try_from_val(env, &v).ok()) {
             if sym == Symbol::new(env, topic) {
-                if let Ok(payload) =
-                    soroban_sdk::Vec::<soroban_sdk::Val>::try_from_val(env, &data)
+                if let Ok(payload) = soroban_sdk::Vec::<soroban_sdk::Val>::try_from_val(env, &data)
                 {
                     return Some(payload);
                 }

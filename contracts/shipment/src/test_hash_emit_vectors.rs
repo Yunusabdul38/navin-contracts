@@ -73,8 +73,6 @@
 //! 3. Update the TypeScript/Python snippets above if the serialization changes.
 //! 4. Commit with a note explaining why the vectors changed.
 
-#![cfg(test)]
-
 extern crate std;
 
 use crate::events::generate_idempotency_key;
@@ -105,7 +103,11 @@ fn test_vector_shipment_created_id1_counter1() {
 
     // Regression guard: assert the value is stable across builds.
     // To update: run the test with --nocapture, copy the printed hex here.
-    assert_eq!(got.len(), 64, "SHA-256 must produce 32 bytes (64 hex chars)");
+    assert_eq!(
+        got.len(),
+        64,
+        "SHA-256 must produce 32 bytes (64 hex chars)"
+    );
 
     // Determinism check: same inputs must always produce the same key
     let key2 = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
@@ -189,7 +191,10 @@ fn test_vector_different_shipment_ids_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 2, crate::event_topics::SHIPMENT_CREATED, 1);
-    assert_ne!(key_a, key_b, "different shipment IDs must produce different keys");
+    assert_ne!(
+        key_a, key_b,
+        "different shipment IDs must produce different keys"
+    );
 }
 
 // ── #301-8: different event types produce different keys ──────────────────────
@@ -199,7 +204,10 @@ fn test_vector_different_event_types_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 1, crate::event_topics::STATUS_UPDATED, 1);
-    assert_ne!(key_a, key_b, "different event types must produce different keys");
+    assert_ne!(
+        key_a, key_b,
+        "different event types must produce different keys"
+    );
 }
 
 // ── #301-9: different counters produce different keys ─────────────────────────
@@ -209,7 +217,10 @@ fn test_vector_different_counters_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 2);
-    assert_ne!(key_a, key_b, "different counters must produce different keys");
+    assert_ne!(
+        key_a, key_b,
+        "different counters must produce different keys"
+    );
 }
 
 // ── #301-10: contract compute_idempotency_key matches generate_idempotency_key ─
@@ -285,8 +296,7 @@ fn test_vector_emitted_keys_match_recomputed() {
             .and_then(|v| Symbol::try_from_val(&env, &v).ok())
         {
             if sym == Symbol::new(&env, crate::event_topics::SHIPMENT_CREATED) {
-                if let Ok(payload) =
-                    soroban_sdk::Vec::<soroban_sdk::Val>::try_from_val(&env, &data)
+                if let Ok(payload) = soroban_sdk::Vec::<soroban_sdk::Val>::try_from_val(&env, &data)
                 {
                     // payload: (shipment_id, sender, receiver, data_hash, schema_ver, counter, key)
                     let emitted_counter =

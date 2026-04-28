@@ -32,9 +32,9 @@ mod test_token_compatibility;
 #[cfg(test)]
 mod test_event_fixtures;
 #[cfg(test)]
-mod test_hash_emit_vectors;
-#[cfg(test)]
 mod test_finalization;
+#[cfg(test)]
+mod test_hash_emit_vectors;
 #[cfg(test)]
 mod test_performance;
 #[cfg(test)]
@@ -56,6 +56,8 @@ mod test_panic_free_invariants;
 mod test_pause;
 #[cfg(test)]
 mod test_require_auth_for_args;
+#[cfg(test)]
+mod test_signature_argument_ordering;
 #[cfg(test)]
 mod test_suspension;
 #[cfg(test)]
@@ -2578,6 +2580,7 @@ impl NavinShipment {
     /// ```rust
     /// // contract.confirm_partial_delivery(&env, &receiver, 1, &hash, 50);
     /// ```
+    pub fn confirm_partial_delivery(
         env: Env,
         receiver: Address,
         shipment_id: u64,
@@ -2929,7 +2932,7 @@ impl NavinShipment {
 
         // Validate all hashes in milestones
         for (_, hash) in &milestones {
-            validation::validate_hash(hash)?;
+            validation::validate_hash(&hash)?;
         }
 
         // Verify shipment exists, carrier is assigned, and status
