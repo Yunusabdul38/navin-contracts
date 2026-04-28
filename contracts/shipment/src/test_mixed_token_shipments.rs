@@ -21,7 +21,9 @@ extern crate std;
 
 use crate::{test_utils, types::ShipmentStatus, NavinShipment, NavinShipmentClient};
 use navin_token::NavinTokenClient;
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, BytesN, Env, IntoVal, Vec};
+use soroban_sdk::{
+    testutils::Address as _, token::StellarAssetClient, Address, BytesN, Env, IntoVal, Vec,
+};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -325,10 +327,7 @@ fn test_sac_refund_does_not_affect_nvn_escrow() {
     );
 
     // NVN escrow completely unaffected
-    assert_eq!(
-        ctx.client_nvn.get_escrow_balance(&id_nvn),
-        amount
-    );
+    assert_eq!(ctx.client_nvn.get_escrow_balance(&id_nvn), amount);
     assert_eq!(
         balance(&ctx.env, &ctx.token_nvn, &ctx.client_nvn.address),
         amount
@@ -492,7 +491,13 @@ fn test_escrow_balance_counters_are_per_contract() {
     let amount_nvn = 700i128;
 
     mint_sac(&ctx.env, &ctx.token_sac, &ctx.company, amount_sac);
-    mint_nvn(&ctx.env, &ctx.token_nvn, &ctx.admin, &ctx.company, amount_nvn);
+    mint_nvn(
+        &ctx.env,
+        &ctx.token_nvn,
+        &ctx.admin,
+        &ctx.company,
+        amount_nvn,
+    );
 
     let deadline = ctx.env.ledger().timestamp() + 3600;
 

@@ -392,4 +392,5 @@ mod tests {
         assert_eq!(HASH_DOMAIN_NOTIFICATION, 0x08);
         assert_eq!(HASH_DOMAIN_NOTE, 0x09);
         assert_eq!(HASH_DOMAIN_EVIDENCE, 0x0A);
-    }}
+    }
+}

@@ -32,9 +32,9 @@ mod test_token_compatibility;
 #[cfg(test)]
 mod test_event_fixtures;
 #[cfg(test)]
-mod test_hash_emit_vectors;
-#[cfg(test)]
 mod test_finalization;
+#[cfg(test)]
+mod test_hash_emit_vectors;
 #[cfg(test)]
 mod test_performance;
 #[cfg(test)]
@@ -49,6 +49,8 @@ mod test_auto_dispute;
 #[cfg(test)]
 mod test_diagnostics;
 #[cfg(test)]
+mod test_hash_domain_separation;
+#[cfg(test)]
 mod test_iot_verification;
 #[cfg(test)]
 mod test_panic_free_invariants;
@@ -60,8 +62,6 @@ mod test_require_auth_for_args;
 mod test_suspension;
 #[cfg(test)]
 mod test_utils;
-#[cfg(test)]
-mod test_hash_domain_separation;
 #[cfg(test)]
 mod test_verification;
 
