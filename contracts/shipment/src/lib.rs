@@ -25,10 +25,14 @@ mod test_consistency;
 #[cfg(test)]
 mod test_cross_contract_integration;
 #[cfg(test)]
+mod test_mixed_token_shipments;
+#[cfg(test)]
 mod test_token_compatibility;
 
 #[cfg(test)]
 mod test_event_fixtures;
+#[cfg(test)]
+mod test_hash_emit_vectors;
 #[cfg(test)]
 mod test_finalization;
 #[cfg(test)]
