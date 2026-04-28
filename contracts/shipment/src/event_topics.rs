@@ -173,12 +173,14 @@ pub const HASH_DOMAIN_DISPUTE: u8 = 0x03;
 
 /// Domain tag for condition-breach / sensor-data events
 /// (`condition_breach`, `carrier_breach`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_CONDITION: u8 = 0x04;
 
 /// Domain tag for carrier-reputation events
 /// (`carrier_late_delivery`, `carrier_on_time_delivery`,
 ///  `carrier_handoff`, `carrier_handoff_completed`,
 ///  `carrier_milestone_rate`, `carrier_dispute_loss`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_CARRIER: u8 = 0x05;
 
 /// Domain tag for admin / governance events
@@ -186,19 +188,24 @@ pub const HASH_DOMAIN_CARRIER: u8 = 0x05;
 ///  `migration_reported`, `contract_paused`, `contract_unpaused`,
 ///  `force_cancelled`, `recovery_event`, `escrow_unlock_event`,
 ///  `finalization_clear_event`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_ADMIN: u8 = 0x06;
 
 /// Domain tag for RBAC events
 /// (`role_revoked`, `role_changed`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_RBAC: u8 = 0x07;
 
 /// Domain tag for notification events (`notification`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_NOTIFICATION: u8 = 0x08;
 
 /// Domain tag for shipment-note events (`note_appended`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_NOTE: u8 = 0x09;
 
 /// Domain tag for dispute-evidence events (`evidence_added`).
+#[allow(dead_code)]
 pub const HASH_DOMAIN_EVIDENCE: u8 = 0x0A;
 // ── Escrow freeze ─────────────────────────────────────────────────────────────
 

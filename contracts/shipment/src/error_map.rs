@@ -128,11 +128,11 @@ pub fn error_info(error: NavinError) -> ContractErrorInfo {
             NoRetry,
             "Amount must be a positive non-zero value.",
         ),
-        NavinError::EscrowAlreadyDeposited => (
+        NavinError::ReentrancyDetected => (
             15,
             InvalidState,
-            NoRetry,
-            "Escrow has already been deposited for this shipment.",
+            RetryAfterDelay,
+            "Reentrancy lock is active; retry once the current escrow operation completes.",
         ),
         NavinError::BatchTooLarge => (
             16,

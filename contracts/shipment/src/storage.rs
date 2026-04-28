@@ -1584,6 +1584,21 @@ pub fn set_paused(env: &Env, paused: bool) {
     env.storage().instance().set(&DataKey::IsPaused, &paused);
 }
 
+/// Returns whether the reentrancy lock is currently active.
+pub fn is_reentrancy_locked(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::ReentrancyLock)
+        .unwrap_or(false)
+}
+
+/// Sets the reentrancy lock flag.
+pub fn set_reentrancy_lock(env: &Env, locked: bool) {
+    env.storage()
+        .instance()
+        .set(&DataKey::ReentrancyLock, &locked);
+}
+
 // ============= IoT Hash Verification Storage Functions =============
 
 /// Store the data hash for a specific shipment status transition.

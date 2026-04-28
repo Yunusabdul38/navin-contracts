@@ -21,11 +21,15 @@ mod storage;
 mod stress_test;
 pub mod test;
 #[cfg(test)]
+mod test_batch_queries;
+#[cfg(test)]
 mod test_consistency;
 #[cfg(test)]
 mod test_cross_contract_integration;
 #[cfg(test)]
 mod test_mixed_token_shipments;
+#[cfg(test)]
+mod test_reentrancy_guard;
 #[cfg(test)]
 mod test_token_compatibility;
 
@@ -73,6 +77,8 @@ pub use diagnostics::*;
 pub use errors::*;
 pub use types::*;
 pub use validation::*;
+
+const MAX_BATCH_QUERY_SIZE: u32 = 50;
 
 fn extend_shipment_ttl(env: &Env, shipment_id: u64) {
     let config = config::get_config(env);
@@ -133,6 +139,25 @@ fn checked_mul_div_i128(value: i128, multiplier: i128, divisor: i128) -> Result<
         .checked_mul(multiplier)
         .ok_or(NavinError::ArithmeticError)?;
     Ok(product / divisor)
+}
+
+fn with_reentrancy_lock<T, F>(env: &Env, operation: F) -> Result<T, NavinError>
+where
+    F: FnOnce() -> Result<T, NavinError>,
+{
+    if storage::is_reentrancy_locked(env) {
+        return Err(NavinError::ReentrancyDetected);
+    }
+
+    storage::set_reentrancy_lock(env, true);
+    let result = operation();
+    storage::set_reentrancy_lock(env, false);
+    result
+}
+
+fn effective_batch_query_limit(env: &Env) -> u32 {
+    let _ = env;
+    MAX_BATCH_QUERY_SIZE
 }
 
 fn finalize_if_settled(_env: &Env, shipment: &mut Shipment) {
@@ -2021,65 +2046,68 @@ impl NavinShipment {
         from.require_auth();
         require_role(&env, &from, Role::Company)?;
 
-        validate_amount(amount).map_err(|_| NavinError::InsufficientFunds)?;
+        with_reentrancy_lock(&env, || {
+            validate_amount(amount).map_err(|_| NavinError::InsufficientFunds)?;
 
-        let mut shipment =
-            storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
+            let mut shipment =
+                storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
 
-        require_not_finalized(&shipment)?;
+            require_not_finalized(&shipment)?;
 
-        if shipment.status != ShipmentStatus::Created {
-            return Err(NavinError::InvalidStatus);
-        }
-
-        if shipment.escrow_amount > 0 {
-            return Err(NavinError::EscrowLocked);
-        }
-
-        // Get token contract address
-        let token_contract = storage::get_token_contract(&env).ok_or(NavinError::NotInitialized)?;
-
-        // Validate that the token uses 7 decimal places (Stellar standard).
-        // This prevents silent amount mismatches for non-standard tokens.
-        validate_token_decimals(&env, &token_contract)?;
-
-        // Create settlement record in Pending state
-        let contract_address = env.current_contract_address();
-        let settlement_id = create_settlement(
-            &env,
-            shipment_id,
-            SettlementOperation::Deposit,
-            amount,
-            &from,
-            &contract_address,
-        )?;
-
-        // Transfer tokens from user to this contract
-        let transfer_result =
-            invoke_token_transfer(&env, &token_contract, &from, &contract_address, amount);
-
-        match transfer_result {
-            Ok(()) => {
-                complete_settlement(&env, settlement_id, shipment_id)?;
-
-                shipment.escrow_amount = checked_add_i128(0, amount)?;
-                shipment.total_escrow = checked_add_i128(0, amount)?;
-                shipment.updated_at = env.ledger().timestamp();
-                shipment.integration_nonce = shipment.integration_nonce.saturating_add(1);
-                persist_shipment(&env, &shipment)?;
-                storage::set_escrow(&env, shipment_id, amount);
-                storage::add_total_escrow_volume(&env, amount)?;
-                extend_shipment_ttl(&env, shipment_id);
-
-                events::emit_escrow_deposited(&env, shipment_id, &from, amount);
+            if shipment.status != ShipmentStatus::Created {
+                return Err(NavinError::InvalidStatus);
             }
-            Err(e) => {
-                fail_settlement(&env, settlement_id, shipment_id, e as u32)?;
-                return Err(e);
-            }
-        }
 
-        Ok(())
+            if shipment.escrow_amount > 0 {
+                return Err(NavinError::EscrowLocked);
+            }
+
+            // Get token contract address
+            let token_contract =
+                storage::get_token_contract(&env).ok_or(NavinError::NotInitialized)?;
+
+            // Validate that the token uses 7 decimal places (Stellar standard).
+            // This prevents silent amount mismatches for non-standard tokens.
+            validate_token_decimals(&env, &token_contract)?;
+
+            // Create settlement record in Pending state
+            let contract_address = env.current_contract_address();
+            let settlement_id = create_settlement(
+                &env,
+                shipment_id,
+                SettlementOperation::Deposit,
+                amount,
+                &from,
+                &contract_address,
+            )?;
+
+            // Transfer tokens from user to this contract
+            let transfer_result =
+                invoke_token_transfer(&env, &token_contract, &from, &contract_address, amount);
+
+            match transfer_result {
+                Ok(()) => {
+                    complete_settlement(&env, settlement_id, shipment_id)?;
+
+                    shipment.escrow_amount = checked_add_i128(0, amount)?;
+                    shipment.total_escrow = checked_add_i128(0, amount)?;
+                    shipment.updated_at = env.ledger().timestamp();
+                    shipment.integration_nonce = shipment.integration_nonce.saturating_add(1);
+                    persist_shipment(&env, &shipment)?;
+                    storage::set_escrow(&env, shipment_id, amount);
+                    storage::add_total_escrow_volume(&env, amount)?;
+                    extend_shipment_ttl(&env, shipment_id);
+
+                    events::emit_escrow_deposited(&env, shipment_id, &from, amount);
+                }
+                Err(e) => {
+                    fail_settlement(&env, settlement_id, shipment_id, e as u32)?;
+                    return Err(e);
+                }
+            }
+
+            Ok(())
+        })
     }
 
     /// Update shipment status with transition validation.
@@ -2320,6 +2348,169 @@ impl NavinShipment {
     /// ```
     pub fn get_shipment_count(env: Env) -> u64 {
         storage::get_shipment_counter(&env)
+    }
+
+    /// Fetch multiple shipments in one call while preserving input order.
+    ///
+    /// Returns `None` for unknown IDs instead of failing the entire request.
+    pub fn get_shipments_batch(
+        env: Env,
+        shipment_ids: Vec<u64>,
+    ) -> Result<Vec<Option<Shipment>>, NavinError> {
+        require_initialized(&env)?;
+
+        let max_batch = effective_batch_query_limit(&env);
+        if shipment_ids.len() > max_batch {
+            return Err(NavinError::BatchTooLarge);
+        }
+
+        let mut results = Vec::new(&env);
+        for shipment_id in shipment_ids.iter() {
+            results.push_back(storage::get_shipment(&env, shipment_id));
+        }
+
+        Ok(results)
+    }
+
+    /// Filter shipments by sender with optional offset pagination.
+    pub fn get_shipments_by_sender(
+        env: Env,
+        sender: Address,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        Self::get_shipments_by_sender_page(env, sender, 0, limit)
+    }
+
+    /// Filter shipments by sender with offset pagination.
+    pub fn get_shipments_by_sender_page(
+        env: Env,
+        sender: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        require_initialized(&env)?;
+        let max_batch = effective_batch_query_limit(&env);
+        if limit == 0 || limit > max_batch {
+            return Err(NavinError::InvalidConfig);
+        }
+
+        let mut matched = Vec::new(&env);
+        let mut skipped = 0_u32;
+        let mut collected = 0_u32;
+        let total_shipments = storage::get_shipment_counter(&env);
+
+        for shipment_id in 1..=total_shipments {
+            if let Some(shipment) = storage::get_shipment(&env, shipment_id) {
+                if shipment.sender != sender {
+                    continue;
+                }
+                if skipped < offset {
+                    skipped = skipped.saturating_add(1);
+                    continue;
+                }
+                matched.push_back(shipment);
+                collected = collected.saturating_add(1);
+                if collected >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(matched)
+    }
+
+    /// Filter shipments by carrier with optional offset pagination.
+    pub fn get_shipments_by_carrier(
+        env: Env,
+        carrier: Address,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        Self::get_shipments_by_carrier_page(env, carrier, 0, limit)
+    }
+
+    /// Filter shipments by carrier with offset pagination.
+    pub fn get_shipments_by_carrier_page(
+        env: Env,
+        carrier: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        require_initialized(&env)?;
+        let max_batch = effective_batch_query_limit(&env);
+        if limit == 0 || limit > max_batch {
+            return Err(NavinError::InvalidConfig);
+        }
+
+        let mut matched = Vec::new(&env);
+        let mut skipped = 0_u32;
+        let mut collected = 0_u32;
+        let total_shipments = storage::get_shipment_counter(&env);
+
+        for shipment_id in 1..=total_shipments {
+            if let Some(shipment) = storage::get_shipment(&env, shipment_id) {
+                if shipment.carrier != carrier {
+                    continue;
+                }
+                if skipped < offset {
+                    skipped = skipped.saturating_add(1);
+                    continue;
+                }
+                matched.push_back(shipment);
+                collected = collected.saturating_add(1);
+                if collected >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(matched)
+    }
+
+    /// Filter shipments by status with optional offset pagination.
+    pub fn get_shipments_by_status(
+        env: Env,
+        status: ShipmentStatus,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        Self::get_shipments_by_status_page(env, status, 0, limit)
+    }
+
+    /// Filter shipments by status with offset pagination.
+    pub fn get_shipments_by_status_page(
+        env: Env,
+        status: ShipmentStatus,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Shipment>, NavinError> {
+        require_initialized(&env)?;
+        let max_batch = effective_batch_query_limit(&env);
+        if limit == 0 || limit > max_batch {
+            return Err(NavinError::InvalidConfig);
+        }
+
+        let mut matched = Vec::new(&env);
+        let mut skipped = 0_u32;
+        let mut collected = 0_u32;
+        let total_shipments = storage::get_shipment_counter(&env);
+
+        for shipment_id in 1..=total_shipments {
+            if let Some(shipment) = storage::get_shipment(&env, shipment_id) {
+                if shipment.status != status {
+                    continue;
+                }
+                if skipped < offset {
+                    skipped = skipped.saturating_add(1);
+                    continue;
+                }
+                matched.push_back(shipment);
+                collected = collected.saturating_add(1);
+                if collected >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(matched)
     }
 
     /// Cursor-based search for shipment IDs by status.
@@ -3376,44 +3567,46 @@ impl NavinShipment {
         require_initialized(&env)?;
         caller.require_auth();
 
-        let admin = storage::get_admin(&env);
-        let mut shipment =
-            storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
+        with_reentrancy_lock(&env, || {
+            let admin = storage::get_admin(&env);
+            let mut shipment =
+                storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
 
-        require_not_finalized(&shipment)?;
+            require_not_finalized(&shipment)?;
 
-        if caller != shipment.receiver && caller != admin {
-            return Err(NavinError::Unauthorized);
-        }
+            if caller != shipment.receiver && caller != admin {
+                return Err(NavinError::Unauthorized);
+            }
 
-        if shipment.status != ShipmentStatus::Delivered {
-            return Err(NavinError::InvalidStatus);
-        }
+            if shipment.status != ShipmentStatus::Delivered {
+                return Err(NavinError::InvalidStatus);
+            }
 
-        let escrow_amount = shipment.escrow_amount;
-        if escrow_amount == 0 {
-            return Err(NavinError::InsufficientFunds);
-        }
+            let escrow_amount = shipment.escrow_amount;
+            if escrow_amount == 0 {
+                return Err(NavinError::InsufficientFunds);
+            }
 
-        internal_release_escrow(&env, &mut shipment, escrow_amount)?;
-        finalize_if_settled(&env, &mut shipment);
-        persist_shipment(&env, &shipment)?;
-        events::emit_notification(
-            &env,
-            &shipment.sender,
-            NotificationType::EscrowReleased,
-            shipment_id,
-            &BytesN::from_array(&env, &[0u8; 32]),
-        );
-        events::emit_notification(
-            &env,
-            &shipment.carrier,
-            NotificationType::EscrowReleased,
-            shipment_id,
-            &BytesN::from_array(&env, &[0u8; 32]),
-        );
+            internal_release_escrow(&env, &mut shipment, escrow_amount)?;
+            finalize_if_settled(&env, &mut shipment);
+            persist_shipment(&env, &shipment)?;
+            events::emit_notification(
+                &env,
+                &shipment.sender,
+                NotificationType::EscrowReleased,
+                shipment_id,
+                &BytesN::from_array(&env, &[0u8; 32]),
+            );
+            events::emit_notification(
+                &env,
+                &shipment.carrier,
+                NotificationType::EscrowReleased,
+                shipment_id,
+                &BytesN::from_array(&env, &[0u8; 32]),
+            );
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Refund escrowed funds to the company if shipment is cancelled.
@@ -3443,67 +3636,70 @@ impl NavinShipment {
         require_initialized(&env)?;
         caller.require_auth();
 
-        let admin = storage::get_admin(&env);
-        let mut shipment =
-            storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
+        with_reentrancy_lock(&env, || {
+            let admin = storage::get_admin(&env);
+            let mut shipment =
+                storage::get_shipment(&env, shipment_id).ok_or(NavinError::ShipmentNotFound)?;
 
-        require_not_finalized(&shipment)?;
+            require_not_finalized(&shipment)?;
 
-        if caller != shipment.sender && caller != admin {
-            return Err(NavinError::Unauthorized);
-        }
+            if caller != shipment.sender && caller != admin {
+                return Err(NavinError::Unauthorized);
+            }
 
-        // Check for suspension if caller is the sender (company)
-        if caller == shipment.sender {
-            require_active_company(&env, &caller)?;
-        }
+            // Check for suspension if caller is the sender (company)
+            if caller == shipment.sender {
+                require_active_company(&env, &caller)?;
+            }
 
-        if shipment.status != ShipmentStatus::Created
-            && shipment.status != ShipmentStatus::Cancelled
-        {
-            return Err(NavinError::InvalidStatus);
-        }
+            if shipment.status != ShipmentStatus::Created
+                && shipment.status != ShipmentStatus::Cancelled
+            {
+                return Err(NavinError::InvalidStatus);
+            }
 
-        let escrow_amount = shipment.escrow_amount;
-        if escrow_amount == 0 {
-            return Err(NavinError::InsufficientFunds);
-        }
+            let escrow_amount = shipment.escrow_amount;
+            if escrow_amount == 0 {
+                return Err(NavinError::InsufficientFunds);
+            }
 
-        // Get token contract address
-        let token_contract = storage::get_token_contract(&env).ok_or(NavinError::NotInitialized)?;
+            // Get token contract address
+            let token_contract =
+                storage::get_token_contract(&env).ok_or(NavinError::NotInitialized)?;
 
-        // Transfer tokens from this contract to company
-        let contract_address = env.current_contract_address();
-        invoke_token_transfer(
-            &env,
-            &token_contract,
-            &contract_address,
-            &shipment.sender,
-            escrow_amount,
-        )?;
+            // Transfer tokens from this contract to company
+            let contract_address = env.current_contract_address();
+            invoke_token_transfer(
+                &env,
+                &token_contract,
+                &contract_address,
+                &shipment.sender,
+                escrow_amount,
+            )?;
 
-        shipment.escrow_amount = 0;
-        let old_status = shipment.status.clone();
-        shipment.status = ShipmentStatus::Cancelled;
-        shipment.updated_at = env.ledger().timestamp();
-        shipment.integration_nonce = shipment.integration_nonce.saturating_add(1);
+            shipment.escrow_amount = 0;
+            let old_status = shipment.status.clone();
+            shipment.status = ShipmentStatus::Cancelled;
+            shipment.updated_at = env.ledger().timestamp();
+            shipment.integration_nonce = shipment.integration_nonce.saturating_add(1);
 
-        finalize_if_settled(&env, &mut shipment);
-        persist_shipment(&env, &shipment)?;
-        storage::decrement_status_count(&env, &old_status);
-        storage::increment_status_count(&env, &ShipmentStatus::Cancelled);
+            finalize_if_settled(&env, &mut shipment);
+            persist_shipment(&env, &shipment)?;
+            storage::decrement_status_count(&env, &old_status);
+            storage::increment_status_count(&env, &ShipmentStatus::Cancelled);
 
-        // Decrement active shipment count if it was not already cancelled
-        if old_status != ShipmentStatus::Cancelled {
-            storage::decrement_active_shipment_count(&env, &shipment.sender);
-        }
+            // Decrement active shipment count if it was not already cancelled
+            if old_status != ShipmentStatus::Cancelled {
+                storage::decrement_active_shipment_count(&env, &shipment.sender);
+            }
 
-        extend_shipment_ttl(&env, shipment_id);
-        extend_shipment_ttl(&env, shipment_id);
+            extend_shipment_ttl(&env, shipment_id);
+            extend_shipment_ttl(&env, shipment_id);
 
-        events::emit_escrow_refunded(&env, shipment_id, &shipment.sender, escrow_amount);
+            events::emit_escrow_refunded(&env, shipment_id, &shipment.sender, escrow_amount);
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Raise a dispute for a shipment.

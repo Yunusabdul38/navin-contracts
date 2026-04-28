@@ -108,6 +108,8 @@ pub enum DataKey {
     AuditEntryCount,
     /// Counter for condition breach events emitted for a shipment.
     BreachEventCount(u64),
+    /// Contract-wide reentrancy lock flag for escrow-sensitive execution paths.
+    ReentrancyLock,
     /// Settlement counter for generating unique settlement IDs.
     SettlementCounter,
     /// Settlement record keyed by settlement ID.

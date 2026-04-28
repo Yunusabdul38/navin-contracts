@@ -42,8 +42,8 @@ pub enum NavinError {
     //    CarrierNotAuthorized = 13,
     /// Amount provided is invalid (zero or negative).
     InvalidAmount = 14,
-    /// Escrow for shipment has already been deposited.
-    EscrowAlreadyDeposited = 15,
+    /// Escrow operation attempted while the reentrancy lock is already active.
+    ReentrancyDetected = 15,
     /// Batch creation array exceeds maximum allowed item limit.
     BatchTooLarge = 16,
     /// Shipment input contained invalid parameters (e.g., receiver equals carrier).

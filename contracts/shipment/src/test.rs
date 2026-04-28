@@ -2629,7 +2629,7 @@ fn test_record_milestones_batch_max_size() {
     for i in 0..10 {
         milestones.push_back((
             Symbol::new(&env, &std::format!("checkpoint_{i}")),
-            BytesN::from_array(&env, &[(i + 1) as u8; 32]),
+            BytesN::from_array(&env, &[(i as u8) + 1; 32]),
         ));
     }
 
