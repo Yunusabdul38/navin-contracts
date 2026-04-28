@@ -15,8 +15,6 @@
 //! Each assertion checks that token1 balances are unaffected by token2
 //! operations and vice-versa.
 
-#![cfg(test)]
-
 extern crate std;
 
 use crate::{test_utils, types::ShipmentStatus, NavinShipment, NavinShipmentClient};

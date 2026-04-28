@@ -24,8 +24,6 @@
 //! configuration is required.  A failing test means an event payload has
 //! drifted from the committed expectation.
 
-#![cfg(test)]
-
 extern crate std;
 
 use crate::{test_utils, NavinShipment, NavinShipmentClient};
