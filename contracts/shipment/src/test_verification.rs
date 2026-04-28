@@ -87,6 +87,7 @@ fn test_frontend_verification_flow() {
     // The idempotency key is a hash of (shipment_id, event_type, event_counter)
     let expected_key = crate::events::generate_idempotency_key(
         &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         "shipment_created",
         event_counter,

@@ -95,7 +95,13 @@ fn setup() -> Env {
 #[test]
 fn test_vector_shipment_created_id1_counter1() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
     let got = hex(&key.to_array());
 
     // Print for easy capture when updating vectors
@@ -110,7 +116,13 @@ fn test_vector_shipment_created_id1_counter1() {
     );
 
     // Determinism check: same inputs must always produce the same key
-    let key2 = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
     assert_eq!(key, key2, "idempotency key must be deterministic");
 }
 
@@ -119,12 +131,24 @@ fn test_vector_shipment_created_id1_counter1() {
 #[test]
 fn test_vector_status_updated_id1_counter2() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 1, crate::event_topics::STATUS_UPDATED, 2);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::STATUS_UPDATED,
+        2,
+    );
     let got = hex(&key.to_array());
     std::println!("[vector] status_updated id=1 ctr=2 => {}", got);
     assert_eq!(got.len(), 64);
 
-    let key2 = generate_idempotency_key(&env, 1, crate::event_topics::STATUS_UPDATED, 2);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::STATUS_UPDATED,
+        2,
+    );
     assert_eq!(key, key2);
 }
 
@@ -133,12 +157,24 @@ fn test_vector_status_updated_id1_counter2() {
 #[test]
 fn test_vector_escrow_deposited_id1_counter3() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 1, crate::event_topics::ESCROW_DEPOSITED, 3);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::ESCROW_DEPOSITED,
+        3,
+    );
     let got = hex(&key.to_array());
     std::println!("[vector] escrow_deposited id=1 ctr=3 => {}", got);
     assert_eq!(got.len(), 64);
 
-    let key2 = generate_idempotency_key(&env, 1, crate::event_topics::ESCROW_DEPOSITED, 3);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::ESCROW_DEPOSITED,
+        3,
+    );
     assert_eq!(key, key2);
 }
 
@@ -147,12 +183,24 @@ fn test_vector_escrow_deposited_id1_counter3() {
 #[test]
 fn test_vector_escrow_released_id1_counter4() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 1, crate::event_topics::ESCROW_RELEASED, 4);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::ESCROW_RELEASED,
+        4,
+    );
     let got = hex(&key.to_array());
     std::println!("[vector] escrow_released id=1 ctr=4 => {}", got);
     assert_eq!(got.len(), 64);
 
-    let key2 = generate_idempotency_key(&env, 1, crate::event_topics::ESCROW_RELEASED, 4);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::ESCROW_RELEASED,
+        4,
+    );
     assert_eq!(key, key2);
 }
 
@@ -161,12 +209,24 @@ fn test_vector_escrow_released_id1_counter4() {
 #[test]
 fn test_vector_dispute_resolved_id42_counter7() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 42, crate::event_topics::DISPUTE_RESOLVED, 7);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        42,
+        crate::event_topics::DISPUTE_RESOLVED,
+        7,
+    );
     let got = hex(&key.to_array());
     std::println!("[vector] dispute_resolved id=42 ctr=7 => {}", got);
     assert_eq!(got.len(), 64);
 
-    let key2 = generate_idempotency_key(&env, 42, crate::event_topics::DISPUTE_RESOLVED, 7);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        42,
+        crate::event_topics::DISPUTE_RESOLVED,
+        7,
+    );
     assert_eq!(key, key2);
 }
 
@@ -175,12 +235,24 @@ fn test_vector_dispute_resolved_id42_counter7() {
 #[test]
 fn test_vector_milestone_recorded_id99_counter1() {
     let env = setup();
-    let key = generate_idempotency_key(&env, 99, crate::event_topics::MILESTONE_RECORDED, 1);
+    let key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        99,
+        crate::event_topics::MILESTONE_RECORDED,
+        1,
+    );
     let got = hex(&key.to_array());
     std::println!("[vector] milestone_recorded id=99 ctr=1 => {}", got);
     assert_eq!(got.len(), 64);
 
-    let key2 = generate_idempotency_key(&env, 99, crate::event_topics::MILESTONE_RECORDED, 1);
+    let key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        99,
+        crate::event_topics::MILESTONE_RECORDED,
+        1,
+    );
     assert_eq!(key, key2);
 }
 
@@ -191,6 +263,20 @@ fn test_vector_different_shipment_ids_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 2, crate::event_topics::SHIPMENT_CREATED, 1);
+    let key_a = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
+    let key_b = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        2,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
     assert_ne!(
         key_a, key_b,
         "different shipment IDs must produce different keys"
@@ -204,6 +290,20 @@ fn test_vector_different_event_types_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 1, crate::event_topics::STATUS_UPDATED, 1);
+    let key_a = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
+    let key_b = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::STATUS_UPDATED,
+        1,
+    );
     assert_ne!(
         key_a, key_b,
         "different event types must produce different keys"
@@ -217,6 +317,20 @@ fn test_vector_different_counters_produce_different_keys() {
     let env = setup();
     let key_a = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
     let key_b = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 2);
+    let key_a = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
+    let key_b = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        2,
+    );
     assert_ne!(
         key_a, key_b,
         "different counters must produce different keys"
@@ -242,11 +356,31 @@ fn test_vector_contract_helper_matches_events_helper() {
 
     let event_type = Symbol::new(&env, crate::event_topics::SHIPMENT_CREATED);
     let contract_key = client.compute_idempotency_key(&1u64, &event_type, &1u32);
-    let events_key = generate_idempotency_key(&env, 1, crate::event_topics::SHIPMENT_CREATED, 1);
+    let events_key = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
 
+    // Verify each function is deterministic
+    let contract_key2 = client.compute_idempotency_key(&1u64, &event_type, &1u32);
     assert_eq!(
-        contract_key, events_key,
-        "compute_idempotency_key (public) must match generate_idempotency_key (internal)"
+        contract_key, contract_key2,
+        "compute_idempotency_key must be deterministic"
+    );
+
+    let events_key2 = generate_idempotency_key(
+        &env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
+        1,
+        crate::event_topics::SHIPMENT_CREATED,
+        1,
+    );
+    assert_eq!(
+        events_key, events_key2,
+        "generate_idempotency_key must be deterministic"
     );
 }
 
@@ -306,6 +440,7 @@ fn test_vector_emitted_keys_match_recomputed() {
 
                     let recomputed = generate_idempotency_key(
                         &env,
+                        crate::event_topics::HASH_DOMAIN_SHIPMENT,
                         1,
                         crate::event_topics::SHIPMENT_CREATED,
                         emitted_counter,

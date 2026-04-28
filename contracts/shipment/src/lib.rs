@@ -49,6 +49,8 @@ mod test_auto_dispute;
 #[cfg(test)]
 mod test_diagnostics;
 #[cfg(test)]
+mod test_hash_domain_separation;
+#[cfg(test)]
 mod test_iot_verification;
 #[cfg(test)]
 mod test_panic_free_invariants;
@@ -1108,16 +1110,27 @@ impl NavinShipment {
         event_type: Symbol,
         event_counter: u32,
     ) -> BytesN<32> {
-        let mut payload = soroban_sdk::Bytes::new(&env);
-        payload.append(&soroban_sdk::Bytes::from_array(
-            &env,
-            &shipment_id.to_be_bytes(),
-        ));
+        use soroban_sdk::Bytes;
+
+        let mut payload = Bytes::new(&env);
+
+        // Domain prefix (HASH_DOMAIN_SHIPMENT = 0x01)
+        let domain = crate::event_topics::HASH_DOMAIN_SHIPMENT;
+        let domain_bytes = domain.to_be_bytes();
+        let domain_len = (domain_bytes.len() as u32).to_be_bytes();
+        payload.append(&Bytes::from_array(&env, &domain_len));
+        payload.append(&Bytes::from_slice(&env, &domain_bytes));
+
+        // Shipment ID (raw bytes)
+        payload.append(&Bytes::from_array(&env, &shipment_id.to_be_bytes()));
+
+        // Event type: use the same XDR encoding as generate_idempotency_key
+        // (as_bytes() of the &str produces the same result as XDR for symbol strings)
         payload.append(&event_type.clone().to_xdr(&env));
-        payload.append(&soroban_sdk::Bytes::from_array(
-            &env,
-            &event_counter.to_be_bytes(),
-        ));
+
+        // Event counter (raw bytes)
+        payload.append(&Bytes::from_array(&env, &event_counter.to_be_bytes()));
+
         env.crypto().sha256(&payload).into()
     }
 
@@ -3630,8 +3643,10 @@ impl NavinShipment {
 
         require_admin_or_guardian(&env, &admin)?;
 
-        // Validate reason hash
-        validation::validate_hash(&reason_hash)?;
+        // Reason hash is mandatory; use a specific error rather than the generic InvalidHash.
+        if reason_hash.to_array().iter().all(|&b| b == 0) {
+            return Err(NavinError::DisputeReasonHashMissing);
+        }
 
         // Idempotency: reject duplicate (shipment_id, resolution, reason_hash) within the window.
         let mut payload = soroban_sdk::Bytes::new(&env);
@@ -4777,6 +4792,21 @@ impl NavinShipment {
         admin.require_auth();
         require_admin_or_operator(&env, &admin)?;
         Ok(consistency::check_all_consistency(&env))
+    }
+
+    /// Compute a canonical SHA-256 hash for a list of values.
+    ///
+    /// This utility allows off-chain systems to verify their hashing implementation
+    /// against the contract's canonical standard.
+    ///
+    /// # Arguments
+    /// * `env` - Execution environment.
+    /// * `fields` - List of values to hash.
+    ///
+    /// # Returns
+    /// * `BytesN<32>` - The computed canonical hash.
+    pub fn get_canonical_hash(env: Env, fields: Vec<soroban_sdk::Val>) -> BytesN<32> {
+        validation::compute_offchain_payload_hash(&env, fields)
     }
 }
 
