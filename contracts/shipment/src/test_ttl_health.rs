@@ -35,6 +35,9 @@ fn setup_shipment_env() -> (Env, NavinShipmentClient<'static>, Address, Address)
     (env, client, admin, token_contract)
 }
 
+/// Helper to create a shipment with default values.
+/// `seed` must be unique per call within a test to avoid idempotency-key collisions
+/// (the contract rejects duplicate `sender + data_hash` pairs within the window).
 /// Helper to create a shipment with a unique data hash per call.
 /// Uses a thread-local counter to ensure each hash is distinct and avoid DuplicateAction.
 fn create_test_shipment(
@@ -42,12 +45,15 @@ fn create_test_shipment(
     env: &Env,
     company: &Address,
     carrier: &Address,
+    seed: u8,
 ) -> u64 {
     use std::sync::atomic::{AtomicU8, Ordering};
     static COUNTER: AtomicU8 = AtomicU8::new(0);
     let idx = COUNTER.fetch_add(1, Ordering::SeqCst);
 
     let receiver = Address::generate(env);
+    let data_hash = BytesN::from_array(env, &[seed.saturating_add(1); 32]);
+    let deadline = env.ledger().timestamp() + 86400; // 1 day from now
     let mut hash_bytes = [0u8; 32];
     hash_bytes[0] = idx;
     hash_bytes[1] = 0xAB;
@@ -97,7 +103,7 @@ fn test_ttl_health_summary_single_shipment() {
     client.add_carrier(&admin, &carrier);
 
     // Create a single shipment
-    create_test_shipment(&client, &env, &company, &carrier);
+    create_test_shipment(&client, &env, &company, &carrier, 0);
 
     // Query TTL health
     let health = client.get_ttl_health_summary();
@@ -122,8 +128,8 @@ fn test_ttl_health_summary_multiple_shipments() {
     client.add_carrier(&admin, &carrier);
 
     // Create 5 shipments
-    for _ in 0..5 {
-        create_test_shipment(&client, &env, &company, &carrier);
+    for i in 0..5u8 {
+        create_test_shipment(&client, &env, &company, &carrier, i);
     }
 
     // Query TTL health
@@ -149,8 +155,8 @@ fn test_ttl_health_summary_deterministic() {
     client.add_carrier(&admin, &carrier);
 
     // Create 10 shipments
-    for _ in 0..10 {
-        create_test_shipment(&client, &env, &company, &carrier);
+    for i in 0..10u8 {
+        create_test_shipment(&client, &env, &company, &carrier, i);
     }
 
     // Query TTL health multiple times
@@ -180,7 +186,7 @@ fn test_ttl_health_summary_config_values() {
     client.add_carrier(&admin, &carrier);
 
     // Create a shipment
-    create_test_shipment(&client, &env, &company, &carrier);
+    create_test_shipment(&client, &env, &company, &carrier, 0);
 
     // Query TTL health
     let health = client.get_ttl_health_summary();
@@ -215,8 +221,8 @@ fn test_ttl_health_summary_edge_case_exactly_20_shipments() {
     client.add_carrier(&admin, &carrier);
 
     // Create exactly 20 shipments (boundary case)
-    for _ in 0..20 {
-        create_test_shipment(&client, &env, &company, &carrier);
+    for i in 0..20u8 {
+        create_test_shipment(&client, &env, &company, &carrier, i);
     }
 
     // Query TTL health

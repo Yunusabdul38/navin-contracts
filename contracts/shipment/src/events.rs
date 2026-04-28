@@ -18,6 +18,8 @@
 //! Each event uses a single descriptive `Symbol` as its topic so that
 //! consumers can filter by topic when subscribing to contract events.
 
+use crate::types::{BreachType, MigrationReport, Role, RoleChangeAction, Severity, ShipmentStatus};
+use soroban_sdk::{Address, Bytes, BytesN, Env, Symbol};
 use crate::types::{
     BreachType, EscrowFreezeReason, MigrationReport, Role, RoleChangeAction, Severity,
     ShipmentStatus,
@@ -30,43 +32,43 @@ fn next_event_counter(env: &Env, shipment_id: u64) -> u32 {
     crate::storage::get_event_count(env, shipment_id).saturating_add(1)
 }
 
+fn append_len_prefixed_bytes(env: &Env, payload: &mut Bytes, data: &[u8]) {
+    payload.append(&Bytes::from_array(env, &(data.len() as u32).to_be_bytes()));
+    payload.append(&Bytes::from_slice(env, data));
+}
+
 /// Compute the canonical idempotency key for an event.
 ///
 /// The idempotency key is a SHA-256 hash of a canonical binary payload
-/// consisting of three fields concatenated in order:
+/// consisting of length-delimited `domain` and `event_type` fields, with
+/// fixed-width numeric fields in between:
 ///
-/// 1. `shipment_id` as big-endian u64 (8 bytes)
-/// 2. `event_type` as XDR-encoded Symbol (length-prefixed string)
-/// 3. `event_counter` as big-endian u32 (4 bytes)
+/// 1. `domain_len` (u32 big-endian), `domain_bytes`
+/// 2. `shipment_id` as big-endian u64 (8 bytes)
+/// 3. `topic_len` (u32 big-endian), `topic_bytes`
+/// 4. `event_counter` as big-endian u32 (4 bytes)
 ///
-/// This deterministic encoding ensures that all parties (on-chain and
-/// off-chain indexers) can independently compute the same key for a given
-/// event, enabling reliable deduplication.
-///
-/// # Arguments
-/// * `env` - The execution environment.
-/// * `shipment_id` - The shipment identifier.
-/// * `event_type` - The event type string (must match a topic constant).
-/// * `event_counter` - The per-shipment monotonically increasing event counter.
-///
-/// # Returns
-/// * `BytesN<32>` - The idempotency key.
+/// This structured encoding prevents ambiguous concatenation and guarantees
+/// domain separation across event families.
 pub fn generate_idempotency_key(
     env: &Env,
+    domain: u8,
     shipment_id: u64,
     event_type: &str,
     event_counter: u32,
 ) -> BytesN<32> {
-    let mut payload = soroban_sdk::Bytes::new(env);
-    payload.append(&soroban_sdk::Bytes::from_array(
-        env,
-        &shipment_id.to_be_bytes(),
-    ));
-    payload.append(&Symbol::new(env, event_type).to_xdr(env));
-    payload.append(&soroban_sdk::Bytes::from_array(
-        env,
-        &event_counter.to_be_bytes(),
-    ));
+    let mut payload = Bytes::new(env);
+
+    // Build a length-delimited preimage to avoid ambiguous concatenation.
+    let domain_bytes = domain.to_be_bytes();
+    append_len_prefixed_bytes(env, &mut payload, &domain_bytes);
+
+    payload.append(&Bytes::from_array(env, &shipment_id.to_be_bytes()));
+
+    let event_type_bytes = event_type.as_bytes();
+    append_len_prefixed_bytes(env, &mut payload, event_type_bytes);
+
+    payload.append(&Bytes::from_array(env, &event_counter.to_be_bytes()));
     env.crypto().sha256(&payload).into()
 }
 
@@ -110,6 +112,7 @@ pub fn emit_shipment_created(
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::SHIPMENT_CREATED,
         event_counter,
@@ -169,6 +172,7 @@ pub fn emit_status_updated(
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::STATUS_UPDATED,
         event_counter,
@@ -232,6 +236,7 @@ pub fn emit_milestone_recorded(
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::MILESTONE_RECORDED,
         event_counter,
@@ -286,6 +291,7 @@ pub fn emit_escrow_deposited(env: &Env, shipment_id: u64, from: &Address, amount
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_ESCROW,
         shipment_id,
         crate::event_topics::ESCROW_DEPOSITED,
         event_counter,
@@ -336,6 +342,7 @@ pub fn emit_escrow_released(env: &Env, shipment_id: u64, to: &Address, amount: i
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_ESCROW,
         shipment_id,
         crate::event_topics::ESCROW_RELEASED,
         event_counter,
@@ -386,6 +393,7 @@ pub fn emit_escrow_refunded(env: &Env, shipment_id: u64, to: &Address, amount: i
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_ESCROW,
         shipment_id,
         crate::event_topics::ESCROW_REFUNDED,
         event_counter,
@@ -480,6 +488,7 @@ pub fn emit_shipment_cancelled(
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::SHIPMENT_CANCELLED,
         event_counter,
@@ -687,6 +696,7 @@ pub fn emit_shipment_expired(env: &Env, shipment_id: u64) {
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::SHIPMENT_EXPIRED,
         event_counter,
@@ -724,6 +734,7 @@ pub fn emit_delivery_success(env: &Env, carrier: &Address, shipment_id: u64, del
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_SHIPMENT,
         shipment_id,
         crate::event_topics::DELIVERY_SUCCESS,
         event_counter,
@@ -1153,6 +1164,7 @@ pub fn emit_dispute_resolved(
     let event_counter = next_event_counter(env, shipment_id);
     let idempotency_key = generate_idempotency_key(
         env,
+        crate::event_topics::HASH_DOMAIN_DISPUTE,
         shipment_id,
         crate::event_topics::DISPUTE_RESOLVED,
         event_counter,

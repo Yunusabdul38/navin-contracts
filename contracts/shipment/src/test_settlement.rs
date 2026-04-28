@@ -1,5 +1,33 @@
 use crate::types::*;
 use crate::{NavinShipment, NavinShipmentClient};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{contract, contractimpl, contracterror, Address, BytesN, Env};
+
+// ── Mock token that always succeeds ──────────────────────────────────────────
+#[contract]
+struct MockToken;
+
+#[contractimpl]
+impl MockToken {
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+        // no-op: always succeeds
+    }
+}
+
+// ── Mock token that always fails ─────────────────────────────────────────────
+mod failing_token {
+    use super::*;
+
+    #[contracterror]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+    #[repr(u32)]
+    pub enum MockTokenFailure {
+        TransferFailed = 1,
+    }
+
+    #[contract]
+    pub struct FailingMockToken;
+
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
 // ── Mock token stubs ──────────────────────────────────────────────────────────
@@ -31,6 +59,8 @@ mod fail_token {
             _from: Address,
             _to: Address,
             _amount: i128,
+        ) -> Result<(), MockTokenFailure> {
+            Err(MockTokenFailure::TransferFailed)
         ) -> Result<(), MockTokenError> {
             Err(MockTokenError::TransferFailed)
         }
@@ -58,6 +88,7 @@ mod mock_token {
 
 fn setup_shipment_env() -> (Env, NavinShipmentClient<'static>, Address, Address) {
     let (env, admin) = crate::test_utils::setup_env();
+    let token_contract = env.register(MockToken {}, ());
     let token_contract = env.register(mock_token::MockToken, ());
     let client = NavinShipmentClient::new(&env, &env.register(NavinShipment, ()));
     client.initialize(&admin, &token_contract);
@@ -84,6 +115,7 @@ mod failing_mock_token {
 fn setup_shipment_env_with_failing_token() -> (Env, NavinShipmentClient<'static>, Address, Address)
 {
     let (env, admin) = crate::test_utils::setup_env();
+    let token_contract = env.register(failing_token::FailingMockToken {}, ());
     let token_contract = env.register(failing_mock_token::FailingMockToken, ());
     let client = NavinShipmentClient::new(&env, &env.register(NavinShipment, ()));
     client.initialize(&admin, &token_contract);
@@ -185,6 +217,8 @@ fn test_deposit_escrow_settlement_failure() {
     let result = client.try_deposit_escrow(&company, &shipment_id, &escrow_amount);
     assert!(result.is_err());
 
+    // On Soroban, the failed call is reverted atomically, so no settlement is persisted.
+    // Verify settlement was NOT created (transaction rolled back)
     // Soroban reverts all state when a contract call panics/errors,
     // so no settlement record is persisted.
     let settlement_count = client.get_settlement_count();
@@ -341,6 +375,12 @@ fn test_refund_escrow_settlement_failure() {
     let result = client.try_refund_escrow(&company, &shipment_id);
     assert!(result.is_err());
 
+    // On Soroban, the failed call is reverted atomically, so no settlement is persisted.
+    let settlement_count = client.get_settlement_count();
+    assert_eq!(settlement_count, 0);
+
+    // Verify no active settlement remains
+    // Verify settlement was NOT created (transaction rolled back)
     // Soroban reverts all state when a contract call panics,
     // so no settlement record is persisted.
     let settlement_count = client.get_settlement_count();
@@ -474,6 +514,7 @@ fn test_multiple_shipments_independent_settlements() {
         &receiver,
         &carrier,
         &data_hash2,
+        &seeded_hash(&env, 2),
         &soroban_sdk::Vec::new(&env),
         &deadline,
     );

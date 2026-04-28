@@ -61,6 +61,7 @@ mod test_suspension;
 #[cfg(test)]
 mod test_utils;
 #[cfg(test)]
+mod test_hash_domain_separation;
 mod test_verification;
 
 pub use config::*;
